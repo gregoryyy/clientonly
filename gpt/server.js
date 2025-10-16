@@ -50,7 +50,8 @@ app.get("/api/search", async (req, res) => {
     if (!q) return res.status(400).json({ error: "Missing q" });
 
     let out;
-    if (engine === "serper") out = await doSerper(q, k);
+    if (engine === "serper") out = await doSerper(q, k, "serper");
+    else if (engine === "google") out = await doSerper(q, k, "google");
     else if (engine === "brave") out = await doBrave(q, k);
     else if (engine === "bing") out = await doBing(q, k);
     else out = await doWiki(q, k);
@@ -62,7 +63,7 @@ app.get("/api/search", async (req, res) => {
   }
 });
 
-async function doSerper(q, k) {
+async function doSerper(q, k, label = "serper") {
   const r = await fetch("https://google.serper.dev/search", {
     method: "POST",
     headers: { "X-API-KEY": process.env.SERPER_KEY, "Content-Type": "application/json" },
@@ -74,7 +75,7 @@ async function doSerper(q, k) {
     url: it.link || it.url,
     snippet: it.snippet || it.description || "",
   }));
-  return { engine: "serper", items };
+  return { engine: label, items };
 }
 async function doBrave(q, k) {
   const r = await fetch(`https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(q)}&count=${k}`, {

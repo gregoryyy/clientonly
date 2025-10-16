@@ -46,7 +46,10 @@ const MODELS = [
   { id: "Llama-3.2-1B-Instruct-q4f16_1-MLC", label: "Llama 3.2 1B Instruct (q4f16_1) – small" },
   { id: "Phi-3-mini-4k-instruct-q4f32_1-MLC", label: "Phi-3 Mini 4K Instruct (q4f32_1) – small/good" },
   { id: "Qwen2.5-1.5B-Instruct-q4f16_1-MLC", label: "Qwen2.5 1.5B Instruct (q4f16_1)" },
-  { id: "Llama-3.1-8B-Instruct-q4f16_1-MLC", label: "Llama 3.1 8B Instruct (q4f16_1) – heavier" }
+  { id: "Llama-3.1-8B-Instruct-q4f16_1-MLC", label: "Llama 3.1 8B Instruct (q4f16_1) – heavier" },
+  { id: "Hermes-3-Llama-3.2-3B-q4f16_1-MLC", label: "Hermes 3 Llama 3.2 3B (q4f16_1) – tools ready" },
+  { id: "Hermes-2-Pro-Llama-3-8B-q4f16_1-MLC", label: "Hermes 2 Pro Llama 3 8B (q4f16_1) – tools ready" },
+  { id: "Hermes-2-Pro-Mistral-7B-q4f16_1-MLC", label: "Hermes 2 Pro Mistral 7B (q4f16_1) – tools ready" }
 ];
 
 const els = {
@@ -186,6 +189,7 @@ const { generateAssistantMessage, executeToolCall } = createRagRuntime({
   setStatus,
   saveChat,
   render,
+  getModelId: () => els.model.value,
   getAbortController: () => abortCtrl,
   setAbortController: (ctrl) => {
     abortCtrl = ctrl;
