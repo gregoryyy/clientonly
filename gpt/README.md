@@ -18,4 +18,4 @@ Run:
 
 - Run Web server `python -m http.server 8080`
 - Run proxy: `ALLOW_ORIGIN=http://localhost:8080 PORT=8787 node server.js`
-- 
+- Open `https://localhost:8080`

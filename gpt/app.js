@@ -139,16 +139,28 @@ async function loadModel() {
     workerUrl.searchParams.set("proxy", HF_PROXY);
     const worker = new Worker(workerUrl, { type: "module" });
 
-    engine = await CreateWebWorkerMLCEngine(worker, {
-      model: els.model.value,
+    engine = await CreateWebWorkerMLCEngine(worker, els.model.value, {
       initProgressCallback: (p) => {
         const pct = p.progress ? Math.round(p.progress * 100) : null;
         setStatus(pct != null ? `${p.text} — ${pct}%` : p.text);
       }
     });
 
-    const meta = await engine.runtimeStats();
-    setStatus(`Ready • ${meta.device || "CPU/WASM"} • ${els.model.value}`);
+    let deviceLabel = "CPU/WASM";
+    try {
+      if (typeof engine.getGPUVendor === "function") {
+        const vendor = await engine.getGPUVendor();
+        if (vendor) deviceLabel = vendor;
+      } else if (typeof engine.runtimeStatsText === "function") {
+        const stats = await engine.runtimeStatsText();
+        const match = /Device:\s*(.+)/i.exec(String(stats));
+        if (match?.[1]) deviceLabel = match[1];
+      }
+    } catch (infoError) {
+      console.debug("Unable to determine device info", infoError);
+    }
+
+    setStatus(`Ready • ${deviceLabel} • ${els.model.value}`);
     saveSettings();
     render(loadChat());
   } catch (e) {
@@ -188,6 +200,7 @@ async function send() {
   render(msgs);
 
   const temperature = Number(els.temp.value) || 0.7;
+  const payload = msgs.map(({ role, content }) => ({ role, content }));
   const newAssistant = { role: "assistant", content: "" };
   msgs.push(newAssistant);
   saveChat(msgs);
@@ -197,7 +210,7 @@ async function send() {
   try {
     const stream = await engine.chat.completions.create({
       stream: true,
-      messages: msgs.map(({ role, content }) => ({ role, content })),
+      messages: payload,
       temperature
     });
 
