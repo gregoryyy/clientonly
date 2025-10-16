@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ELK.js + Cytoscape.js — 100+ Node Task DAG</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <!-- Cytoscape.js (core) -->
+  <script src="https://unpkg.com/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
+  <!-- ELK.js (bundled) -->
+  <script src="https://unpkg.com/elkjs@0.9.3/lib/elk.bundled.js"></script>
+</head>
+<body>
+  <header class="toolbar">
+    <h1>ELK.js + Cytoscape.js — 100+ Node Task DAG</h1>
+    <div class="spacer"></div>
+    <div class="stats">
+      <span id="stat-nodes">Nodes: —</span>
+      <span id="stat-edges">Edges: —</span>
+      <span id="stat-layout">ELK layout: — ms</span>
+    </div>
+    <button id="btn-regenerate" title="Regenerate graph">Regenerate</button>
+    <button id="btn-fit" title="Fit to screen">Fit</button>
+  </header>
+
+  <main>
+    <p class="hint">
+      Layout by <a href="https://www.eclipse.org/elk/" target="_blank" rel="noreferrer">ELK.js</a>,
+      rendering by <a href="https://js.cytoscape.org/" target="_blank" rel="noreferrer">Cytoscape.js</a>.
+      Hover to highlight neighborhoods, click to focus a node.
+    </p>
+    <div id="cy"></div>
+  </main>
+
+  <script src="./app.js"></script>
+</body>
+</html>

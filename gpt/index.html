@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>WebLLM — Simple Client-side Chatbot</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { --bg:#0b0d10; --panel:#151922; --muted:#8b95a7; --text:#e8ecf1; --accent:#5aa7ff; --accent2:#92e3a9; }
+    html,body { height:100%; background:var(--bg); color:var(--text); font:14px/1.35 system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial, sans-serif; }
+    .wrap { max-width: 920px; margin: 24px auto; padding: 0 16px; }
+    .toolbar { display:flex; flex-wrap:wrap; gap:8px; align-items: center; background: var(--panel); padding:12px; border-radius: 12px; }
+    select, input[type="text"], textarea { background:#0f131a; border:1px solid #202838; color:var(--text); border-radius:8px; padding:8px 10px; }
+    select { min-width: 320px; }
+    label { color: var(--muted); font-size: 12px; margin-right: 6px; }
+    .grow { flex:1 1 240px; }
+    .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    .btn { border:1px solid #2c3b57; background:#123; color:#cfe3ff; padding:8px 10px; border-radius:8px; cursor:pointer; }
+    .btn.secondary { background:#1a1f2b; color:#cdd6e5; }
+    .btn.danger { background:#2a1414; border-color:#552; color:#f7d6d6; }
+    .btn:disabled { opacity:.6; cursor:not-allowed; }
+    .status { color: var(--muted); font-size:12px; }
+    .chat { margin-top: 14px; background: var(--panel); border-radius: 12px; padding: 12px; height: 62vh; display:flex; flex-direction:column; }
+    .messages { overflow:auto; padding: 8px; flex:1; }
+    .msg { padding: 10px 12px; margin: 8px 0; border-radius: 10px; white-space: pre-wrap; word-wrap: break-word; }
+    .msg.user { background:#182231; }
+    .msg.assistant { background:#11181f; border:1px solid #223146; }
+    .meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .composer { display:flex; gap:8px; align-items:flex-end; }
+    textarea#input { flex: 1; min-height: 56px; max-height: 30vh; resize: vertical; }
+    .pill { padding:2px 6px; border:1px solid #2c3b57; border-radius: 999px; font-size: 12px; color: var(--muted);}
+    .right { margin-left:auto; }
+    .kvs { display:flex; gap:14px; align-items:center; flex-wrap:wrap; }
+    .slider { display:flex; align-items:center; gap:8px; }
+    input[type="range"] { accent-color: var(--accent); }
+    a { color: var(--accent2); text-decoration: none; }
+    .dim { opacity:.85 }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h2 style="margin:0 0 10px 0;">WebLLM — Client-Side Chat</h2>
+  <div class="toolbar">
+    <div class="row grow">
+      <label for="model">Model</label>
+      <select id="model"></select>
+      <button class="btn" id="loadBtn">Load model</button>
+      <span id="status" class="status">WebGPU: <span id="gpu"></span></span>
+    </div>
+    <div class="kvs">
+      <div class="slider">
+        <label for="temp">Temp</label>
+        <input id="temp" type="range" min="0" max="2" step="0.1" value="0.7" />
+        <span id="tempVal" class="pill">0.7</span>
+      </div>
+      <button class="btn secondary" id="newChatBtn" title="Start a fresh chat">New chat</button>
+      <button class="btn danger" id="clearBtn" title="Clear stored chats for this model">Clear saved</button>
+    </div>
+  </div>
+
+  <div style="margin:10px 0 6px 2px;">
+    <label for="system" class="dim">System prompt</label>
+    <textarea id="system" rows="2" placeholder="You are a helpful assistant that answers concisely."></textarea>
+  </div>
+
+  <div class="chat">
+    <div id="messages" class="messages"></div>
+    <div class="composer">
+      <textarea id="input" placeholder="Type your message… (Shift+Enter for newline, Enter to send)"></textarea>
+      <div style="display:flex; flex-direction:column; gap:8px;">
+        <button class="btn" id="sendBtn">Send</button>
+        <button class="btn danger" id="stopBtn" disabled>Stop</button>
+      </div>
+    </div>
+  </div>
+
+  <p class="meta">Runs entirely in your browser via <a href="https://github.com/mlc-ai/web-llm" target="_blank" rel="noreferrer">WebLLM</a>. Nothing leaves your device.</p>
+</div>
+
+<script type="module">
+  import { CreateWebWorkerMLCEngine } from "https://esm.run/@mlc-ai/web-llm@latest";
+
+  // --- Basic model list (update IDs if needed from the MLC gallery) ---
+  const MODELS = [
+    { id: "Qwen2.5-0.5B-Instruct-q4f16_1-MLC", label: "Qwen2.5 0.5B Instruct (q4f16_1) – tiny, fast" },
+    { id: "Llama-3.2-1B-Instruct-q4f16_1-MLC", label: "Llama 3.2 1B Instruct (q4f16_1) – small" },
+    { id: "Phi-3-mini-4k-instruct-q4f32_1-MLC", label: "Phi-3 Mini 4K Instruct (q4f32_1) – small/good" },
+    { id: "Qwen2.5-1.5B-Instruct-q4f16_1-MLC", label: "Qwen2.5 1.5B Instruct (q4f16_1)" },
+    { id: "Llama-3.1-8B-Instruct-q4f16_1-MLC", label: "Llama 3.1 8B Instruct (q4f16_1) – heavier" }
+  ];
+
+  const els = {
+    model: document.getElementById('model'),
+    loadBtn: document.getElementById('loadBtn'),
+    status: document.getElementById('status'),
+    gpu: document.getElementById('gpu'),
+    temp: document.getElementById('temp'),
+    tempVal: document.getElementById('tempVal'),
+    system: document.getElementById('system'),
+    messages: document.getElementById('messages'),
+    input: document.getElementById('input'),
+    sendBtn: document.getElementById('sendBtn'),
+    stopBtn: document.getElementById('stopBtn'),
+    newChatBtn: document.getElementById('newChatBtn'),
+    clearBtn: document.getElementById('clearBtn')
+  };
+
+  // Populate model select
+  MODELS.forEach(m => {
+    const o = document.createElement('option');
+    o.value = m.id; o.textContent = m.label;
+    els.model.appendChild(o);
+  });
+
+  // Prefer a tiny default for first load
+  els.model.value = MODELS[0].id;
+
+  // WebGPU status
+  els.gpu.textContent = (navigator.gpu ? "Available ✅" : "Not available ❌ — will fall back to WASM (slower)");
+
+  // Temperature UI
+  els.temp.addEventListener('input', () => els.tempVal.textContent = els.temp.value);
+
+  // Persist/restore small settings
+  const SETTINGS_KEY = "webllm-chat:settings";
+  const settings = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
+  if (settings.model) els.model.value = settings.model;
+  if (typeof settings.temp === 'number') { els.temp.value = settings.temp; els.tempVal.textContent = settings.temp.toFixed(1); }
+  if (settings.system) els.system.value = settings.system;
+
+  function saveSettings() {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify({
+      model: els.model.value,
+      temp: Number(els.temp.value),
+      system: els.system.value
+    }));
+  }
+
+  // Chat state per model
+  function chatKey() { return `webllm-chat:log:${els.model.value}`; }
+  function loadChat() {
+    const arr = JSON.parse(localStorage.getItem(chatKey()) || "[]");
+    return Array.isArray(arr) ? arr : [];
+  }
+  function saveChat(messages) { localStorage.setItem(chatKey(), JSON.stringify(messages)); }
+
+  // Render messages
+  function render(messages) {
+    els.messages.innerHTML = "";
+    for (const m of messages) {
+      if (m.role === 'system') continue;
+      const div = document.createElement('div');
+      div.className = `msg ${m.role}`;
+      div.textContent = m.content;
+      els.messages.appendChild(div);
+    }
+    els.messages.scrollTop = els.messages.scrollHeight;
+  }
+
+  // Engine + generation control
+  let engine = null;
+  let abortCtrl = null;
+  let isLoadingModel = false;
+
+  async function loadModel() {
+    if (isLoadingModel) return;
+    isLoadingModel = true;
+    els.loadBtn.disabled = true;
+    setStatus(`Loading ${els.model.value}…`);
+
+    try {
+      // Kill previous worker to free GPU/CPU memory
+      if (engine?.worker) { engine.worker.terminate?.(); }
+      const worker = new Worker("https://esm.run/@mlc-ai/web-llm@latest/dist/worker.js", { type: "module" });
+
+      engine = await CreateWebWorkerMLCEngine(worker, {
+        model: els.model.value,
+        // Called frequently during model fetch/compile
+        initProgressCallback: (p) => {
+          const pct = p.progress ? Math.round(p.progress * 100) : null;
+          setStatus(pct != null ? `${p.text} — ${pct}%` : p.text);
+        }
+      });
+
+      const meta = await engine.runtimeStats();
+      setStatus(`Ready • ${meta.device || 'CPU/WASM'} • ${els.model.value}`);
+      saveSettings();
+
+      // Load chat for this model
+      render(loadChat());
+    } catch (e) {
+      console.error(e);
+      setStatus(`Failed to load model. See console for details.`);
+      alert(`Model load failed.\n\n${e?.message || e}`);
+    } finally {
+      els.loadBtn.disabled = false;
+      isLoadingModel = false;
+    }
+  }
+
+  function setStatus(s) { els.status.innerHTML = `Status: <span class="dim">${s}</span>`; }
+
+  // Send a prompt (streaming)
+  async function send() {
+    const text = els.input.value.trim();
+    if (!text) return;
+    if (!engine) {
+      alert("Load a model first.");
+      return;
+    }
+
+    els.input.value = "";
+    els.sendBtn.disabled = true;
+    els.stopBtn.disabled = false;
+
+    let msgs = loadChat();
+    // Inject/refresh system at the front only if present
+    msgs = msgs.filter(m => m.role !== 'system');
+    if (els.system.value.trim()) msgs.unshift({ role: 'system', content: els.system.value.trim() });
+
+    msgs.push({ role: 'user', content: text });
+    saveChat(msgs);
+    render(msgs);
+
+    const temperature = Number(els.temp.value) || 0.7;
+    const newAssistant = { role: 'assistant', content: "" };
+    msgs.push(newAssistant);
+    saveChat(msgs);
+    render(msgs);
+
+    // Streaming with AbortController
+    abortCtrl = new AbortController();
+    try {
+      const stream = await engine.chat.completions.create({
+        stream: true,
+        messages: msgs.map(({role, content}) => ({ role, content })),
+        temperature
+      });
+
+      for await (const chunk of stream) {
+        const piece = chunk?.choices?.[0]?.delta?.content || "";
+        if (piece) {
+          newAssistant.content += piece;
+          // Render incrementally but not too often
+          render(msgs);
+        }
+        if (abortCtrl == null) break; // aborted
+      }
+      setStatus("Done.");
+    } catch (e) {
+      if (e.name === "AbortError") {
+        setStatus("Generation stopped.");
+      } else {
+        console.error(e);
+        setStatus("Error during generation.");
+        alert(`Generation error:\n\n${e?.message || e}`);
+      }
+    } finally {
+      abortCtrl = null;
+      els.sendBtn.disabled = false;
+      els.stopBtn.disabled = true;
+      saveChat(msgs);
+      render(msgs);
+    }
+  }
+
+  // UI handlers
+  els.loadBtn.addEventListener('click', async () => {
+    saveSettings();
+    await loadModel();
+  });
+
+  els.sendBtn.addEventListener('click', send);
+  els.stopBtn.addEventListener('click', () => {
+    if (abortCtrl) { abortCtrl.abort(); abortCtrl = null; }
+    els.stopBtn.disabled = true;
+  });
+
+  els.newChatBtn.addEventListener('click', () => {
+    const fresh = [];
+    if (els.system.value.trim()) fresh.push({ role: 'system', content: els.system.value.trim() });
+    saveChat(fresh);
+    render(fresh);
+  });
+
+  els.clearBtn.addEventListener('click', () => {
+    if (confirm("Delete all saved chats for this model?")) {
+      localStorage.removeItem(chatKey());
+      const base = els.system.value.trim() ? [{ role:'system', content: els.system.value.trim() }] : [];
+      render(base);
+    }
+  });
+
+  els.model.addEventListener('change', () => {
+    saveSettings();
+    // Switching models keeps chats separate (auto-load saved thread)
+    render(loadChat());
+    setStatus(`Model selected: ${els.model.value}. Click “Load model”.`);
+  });
+
+  // Enter to send, Shift+Enter for newline
+  els.input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      els.sendBtn.click();
+    }
+  });
+
+  // Auto-load the default/last-used model on first open for convenience
+  (async () => {
+    // Render any stored chat for the chosen model
+    render(loadChat());
+    setStatus("Idle.");
+  })();
+</script>
+</body>
+</html>
