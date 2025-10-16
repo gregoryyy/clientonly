@@ -19,6 +19,29 @@ app.use((req, res, next) => {
 
 app.use("/api/", rateLimit({ windowMs: 60_000, max: 60 }));
 
+app.use("/proxy/hf", async (req, res) => {
+  const targetPath = req.path.slice(1);              // strip leading slash
+  const url = `https://huggingface.co/${targetPath}${req.url.includes("?") ? `?${req.url.split("?")[1]}` : ""}`;
+
+  const upstream = await fetch(url, {
+    method: req.method,
+    headers: {
+      // Forward only headers Hugging Face expects; include Range for shard slices
+      "Range": req.headers["range"],
+      "Accept": req.headers["accept"],
+    },
+  });
+
+  res.status(upstream.status);
+  res.set("Access-Control-Expose-Headers", "Accept-Ranges, Content-Length, Content-Range");
+  res.set("Accept-Ranges", upstream.headers.get("accept-ranges") || "bytes");
+  res.set("Content-Length", upstream.headers.get("content-length") || "");
+  res.set("Content-Range", upstream.headers.get("content-range") || "");
+  res.set("Content-Type", upstream.headers.get("content-type") || "application/octet-stream");
+
+  upstream.body.pipe(res);
+});
+
 app.get("/api/search", async (req, res) => {
   try {
     const q = String(req.query.q || "").trim().slice(0, 500);

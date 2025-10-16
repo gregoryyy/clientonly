@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "@mlc-ai/web-llm": "^0.2.79",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.1.0",
+    "morgan": "^1.10.1",
+    "node-fetch": "^3.3.2"
+  }
+}

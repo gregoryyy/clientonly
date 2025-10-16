@@ -77,9 +77,46 @@
 </div>
 
 <script type="module">
-  import { CreateWebWorkerMLCEngine } from "https://esm.run/@mlc-ai/web-llm@latest";
+  import { CreateWebWorkerMLCEngine } from "./vendor/web-llm/index.js";
 
   // --- Basic model list (update IDs if needed from the MLC gallery) ---
+  const HF_PROXY = window.__WEBLLM_HF_PROXY__ ?? "http://localhost:8787/proxy/hf/";
+  window.__WEBLLM_HF_PROXY__ = HF_PROXY;
+  const HF_ORIGIN = "https://huggingface.co/";
+  if (!window.__WEBLLM_FETCH_PATCHED__) {
+    const originalFetch = window.fetch.bind(window);
+    const base = HF_PROXY.endsWith("/") ? HF_PROXY : `${HF_PROXY}/`;
+    window.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : input?.url;
+      if (typeof url === "string" && url.startsWith(HF_ORIGIN)) {
+        const suffix = url.slice(HF_ORIGIN.length);
+        const proxiedUrl = base + suffix;
+        if (typeof input === "string") {
+          return originalFetch(proxiedUrl, init);
+        }
+        const requestInit = {
+          method: input.method,
+          headers: input.headers,
+          mode: input.mode,
+          credentials: input.credentials,
+          cache: input.cache,
+          redirect: input.redirect,
+          referrer: init?.referrer ?? input.referrer,
+          referrerPolicy: init?.referrerPolicy ?? input.referrerPolicy,
+          integrity: init?.integrity ?? input.integrity,
+          keepalive: init?.keepalive ?? input.keepalive,
+          signal: init?.signal ?? input.signal
+        };
+        const mergedInit = init
+          ? { ...requestInit, ...init, headers: init.headers ?? requestInit.headers }
+          : requestInit;
+        return originalFetch(proxiedUrl, mergedInit);
+      }
+      return originalFetch(input, init);
+    };
+    window.__WEBLLM_FETCH_PATCHED__ = true;
+  }
+
   const MODELS = [
     { id: "Qwen2.5-0.5B-Instruct-q4f16_1-MLC", label: "Qwen2.5 0.5B Instruct (q4f16_1) – tiny, fast" },
     { id: "Llama-3.2-1B-Instruct-q4f16_1-MLC", label: "Llama 3.2 1B Instruct (q4f16_1) – small" },
@@ -170,7 +207,9 @@
     try {
       // Kill previous worker to free GPU/CPU memory
       if (engine?.worker) { engine.worker.terminate?.(); }
-      const worker = new Worker("https://esm.run/@mlc-ai/web-llm@latest/dist/worker.js", { type: "module" });
+      const workerUrl = new URL("./vendor/web-llm/dist/worker.js", import.meta.url);
+      workerUrl.searchParams.set("proxy", HF_PROXY);
+      const worker = new Worker(workerUrl, { type: "module" });
 
       engine = await CreateWebWorkerMLCEngine(worker, {
         model: els.model.value,
